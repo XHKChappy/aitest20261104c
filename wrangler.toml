@@ -1,0 +1,12 @@
+name = "aitest20261104b"
+main = "src/index.ts"
+compatibility_date = "2026-11-04"
+workers_dev = true
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# 使用 wrangler secret put ADMIN_PASSWORD
+# 使用 wrangler secret put PROBE_SECRET
+# 可选：wrangler secret put SESSION_SIGNING_SECRET
