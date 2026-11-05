@@ -1,52 +1,223 @@
 import type { Env } from "./types";
 import { json } from "./types";
 import { login, logout, requireAuth } from "./auth";
-import { loginPage, chatPage, momentsPage, settingsPage } from "./view";
-import { sendChat,listAgents,saveAgent,deleteAgent,momentsGet,createMoment,likeMoment,commentMoment,settingsGet,settingsSave,backendSave,memoryRoutes } from "./modules";
-import { probeHttp,runProbe } from "./probe";
-import { exportData,importData } from "./export";
-
-async function history(env:Env,id:number){const r=await env.DB.prepare("SELECT role,content,status,created_at FROM chat_records WHERE agent_id=? ORDER BY id LIMIT 300").bind(id).all();return json(r.results||[]);}
-function setupPage(){return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>部署成功 · 等待初始化</title><style>body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f7;color:#1d1d1f;margin:0;padding:48px 20px}.card{max-width:760px;margin:6vh auto;background:white;border:1px solid #e5e5e7;border-radius:20px;padding:32px;box-shadow:0 12px 40px #0000000a}h1{font-size:26px}li{margin:12px 0;line-height:1.6}code{background:#f1f1f4;padding:3px 6px;border-radius:5px} .ok{color:#16834a;font-weight:700}</style><main class="card"><div class="ok">✓ Worker 已成功部署</div><h1>还差最后一步：配置 Cloudflare 资源</h1><p>这是首次部署页面。当前 Worker 尚未绑定 D1 数据库，因此业务功能暂未启用。请按以下顺序在 Cloudflare 控制台完成初始化：</p><ol><li>进入本 Worker 的 <b>Settings → Bindings</b>，添加 D1 database，变量名称填写 <code>DB</code>，选择或新建数据库。</li><li>进入 D1 数据库的 SQL Console，执行项目 GitHub 仓库中的 <code>migrations/0001_init.sql</code>。</li><li>进入 Worker 的 <b>Settings → Variables and Secrets</b>，添加 Secrets：<code>ADMIN_PASSWORD</code>（管理员登录密码）和 <code>PROBE_SECRET</code>（随机长密钥）。</li><li>可选添加变量：<code>APP_NAME</code>、<code>SESSION_TTL_HOURS</code>、<code>PROBE_MIN_INTERVAL_SECONDS</code>。</li><li>保存配置并重新部署/重启 Worker，然后刷新本页面，即可进入登录界面。</li></ol><p>无需修改 GitHub 代码，也无需在首次部署前创建 D1 或填写 Database ID。</p></main></html>`;}
+import { checkDbStatus, initDb } from "./db";
+import {
+  sendChat, getConversations, getChatHistory, regenerateChat, editMessage, deleteChatMessage, clearChatHistory, markAsRead,
+  getMomentsFeed, createMoment, deleteMoment, toggleLikeMoment, addCommentMoment, deleteCommentMoment,
+  listAgents, getAgentDetail, saveAgent, deleteAgent, handleAgentMemories, mergeAgentMemories,
+  listBackends, saveBackend, deleteBackend, testBackend, getBackendCallDetails, clearBackendCallDetails, getTokenStats,
+  previewCleanup, executeCleanup,
+  handleAgentContextApi,
+  getSystemSettings, saveSystemSettings
+} from "./modules";
+import { probeHttp, runProbe } from "./probe";
+import { exportData, importData } from "./export";
+import { renderWeChatApp, setupPage, initPage } from "./view";
 
 export default {
- async fetch(request:Request,env:Env,ctx:ExecutionContext):Promise<Response>{
-  // First deployment intentionally has no D1 binding. Show setup instructions
-  // instead of touching DB until the operator adds the DB binding in Dashboard.
-  if(!env.DB) return new Response(setupPage(),{status:200,headers:{"content-type":"text/html;charset=utf-8","cache-control":"no-store"}});
-  const url=new URL(request.url),path=url.pathname,method=request.method;
-  if(path==="/login"&&method==="GET")return new Response(loginPage(),{headers:{"content-type":"text/html;charset=utf-8"}});
-  if(path==="/login"&&method==="POST")return login(request,env);
-  if(path==="/logout"&&method==="POST")return logout(env,request);
-  if(path==="/api/probe"&&method==="GET")return probeHttp(request,env);
-  if(!(await requireAuth(request,env))){
-    if(path.startsWith("/api/"))return json({error:"unauthorized"},401);
-    return Response.redirect(new URL("/login",url),302);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const method = request.method;
+
+    // 1. Stage 1: No DB binding in Worker. Show setup guide, never crash
+    if (!env.DB) {
+      if (path.startsWith("/api/")) {
+        return json({ error: "Cloudflare D1 数据库尚未绑定，变量名需为 DB" }, 503);
+      }
+      return new Response(setupPage(), {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }
+      });
+    }
+
+    // 2. Stage 2 & 3: DB bound, but tables not initialized or schema migration required
+    const dbStatus = await checkDbStatus(env);
+    if (!dbStatus.initialized) {
+      if (path === "/api/setup/init" && method === "POST") {
+        const body = await request.json().catch(() => ({})) as { password?: string };
+        // If ADMIN_PASSWORD is set, require it for init; otherwise allow initial setup
+        if (env.ADMIN_PASSWORD && body.password !== env.ADMIN_PASSWORD) {
+          return json({ error: "初始化凭证密码错误" }, 401);
+        }
+        try {
+          const res = await initDb(env);
+          return json({ ok: true, version: res.version, message: "数据库初始化完成，核心数据表已建好" });
+        } catch (err: any) {
+          return json({ error: err.message || String(err) }, 500);
+        }
+      }
+      if (path.startsWith("/api/")) {
+        return json({ error: "数据库尚未初始化，请先访问根路径进行一键初始化" }, 503);
+      }
+      return new Response(initPage(env.ADMIN_PASSWORD ? true : false), {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }
+      });
+    }
+
+    // 3. AI Reality Context API (POST /api/agent/context)
+    // Uses independent agent credential authentication (Section 28)
+    if (path === "/api/agent/context" && method === "POST") {
+      return handleAgentContextApi(request, env);
+    }
+
+    // 4. Probe endpoint (Cron or manual HTTP with PROBE_SECRET)
+    if (path === "/api/probe" && method === "GET") {
+      return probeHttp(request, env);
+    }
+
+    // 5. Authentication routes
+    if (path === "/login" && method === "POST") {
+      return login(request, env);
+    }
+    if (path === "/logout" && method === "POST") {
+      return logout(env, request);
+    }
+
+    // 6. Check Host Admin Session for other routes
+    const isAuthed = await requireAuth(request, env);
+    if (!isAuthed) {
+      if (path.startsWith("/api/")) {
+        return json({ error: "未登录或登录会话已过期" }, 401);
+      }
+      // Render login page inside WeChat single-page container
+      return new Response(renderWeChatApp({ authed: false, user: null }), {
+        headers: { "content-type": "text/html; charset=utf-8" }
+      });
+    }
+
+    // 7. Protected Front-end App (WeChat iOS 1:1 Interface)
+    if (path === "/" || path === "/chat" || path === "/contacts" || path === "/moments" || path === "/me" || path === "/settings") {
+      const user = await env.DB.prepare("SELECT * FROM users WHERE id = 1").first<any>();
+      return new Response(renderWeChatApp({ authed: true, user }), {
+        headers: { "content-type": "text/html; charset=utf-8" }
+      });
+    }
+
+    // 8. Protected API Routes: Chat & Messages
+    if (path === "/api/chat/conversations" && method === "GET") {
+      return getConversations(env);
+    }
+    if (path === "/api/chat/history" && method === "GET") {
+      return getChatHistory(request, env);
+    }
+    if (path === "/api/sendChat" && method === "POST") {
+      return sendChat(request, env);
+    }
+    if (path === "/api/chat/regenerate" && method === "POST") {
+      return regenerateChat(request, env);
+    }
+    if (path === "/api/chat/edit" && method === "POST") {
+      return editMessage(request, env);
+    }
+    if (path === "/api/chat/deleteMessage" && method === "POST") {
+      return deleteChatMessage(request, env);
+    }
+    if (path === "/api/chat/clearHistory" && method === "POST") {
+      return clearChatHistory(request, env);
+    }
+    if (path === "/api/chat/read" && method === "POST") {
+      return markAsRead(request, env);
+    }
+
+    // 9. Moments (朋友圈)
+    if (path === "/api/moments" && method === "GET") {
+      return getMomentsFeed(env);
+    }
+    if (path === "/api/moments" && method === "POST") {
+      return createMoment(request, env, ctx);
+    }
+    const momentMatch = path.match(/^\/api\/moments\/(\d+)$/);
+    if (momentMatch && method === "DELETE") {
+      return deleteMoment(request, env, Number(momentMatch[1]));
+    }
+    if (path === "/api/moments/like" && method === "POST") {
+      return toggleLikeMoment(request, env);
+    }
+    if (path === "/api/moments/comment" && method === "POST") {
+      return addCommentMoment(request, env, ctx);
+    }
+    const commentMatch = path.match(/^\/api\/moments\/comment\/(\d+)$/);
+    if (commentMatch && method === "DELETE") {
+      return deleteCommentMoment(request, env, Number(commentMatch[1]));
+    }
+
+    // 10. Agents (通讯录 & 智能体主页 & 设置)
+    if (path === "/api/agents" && method === "GET") {
+      return listAgents(env);
+    }
+    if (path === "/api/agents" && method === "POST") {
+      return saveAgent(request, env);
+    }
+    const agentMatch = path.match(/^\/api\/agents\/(\d+)$/);
+    if (agentMatch && method === "GET") {
+      return getAgentDetail(env, Number(agentMatch[1]));
+    }
+    if (agentMatch && method === "DELETE") {
+      return deleteAgent(request, env, Number(agentMatch[1]));
+    }
+    const memMatch = path.match(/^\/api\/agents\/(\d+)\/memories$/);
+    if (memMatch) {
+      return handleAgentMemories(request, env, Number(memMatch[1]));
+    }
+    const memMergeMatch = path.match(/^\/api\/agents\/(\d+)\/memories\/merge$/);
+    if (memMergeMatch && method === "POST") {
+      return mergeAgentMemories(request, env, Number(memMergeMatch[1]));
+    }
+
+    // 11. API Backends & Models
+    if (path === "/api/backends" && method === "GET") {
+      return listBackends(env);
+    }
+    if (path === "/api/backends" && method === "POST") {
+      return saveBackend(request, env);
+    }
+    const backendMatch = path.match(/^\/api\/backends\/(\d+)$/);
+    if (backendMatch && method === "DELETE") {
+      return deleteBackend(request, env, Number(backendMatch[1]));
+    }
+    if (path === "/api/backends/test" && method === "POST") {
+      return testBackend(request, env);
+    }
+    if (path === "/api/backends/details" && method === "GET") {
+      return getBackendCallDetails(request, env);
+    }
+    if (path === "/api/backends/clearLogs" && method === "POST") {
+      return clearBackendCallDetails(env);
+    }
+    if (path === "/api/stats/token" && method === "GET") {
+      return getTokenStats(env);
+    }
+
+    // 12. System Settings & Cleanup Center
+    if (path === "/api/settings" && method === "GET") {
+      return getSystemSettings(env);
+    }
+    if (path === "/api/settings" && method === "POST") {
+      return saveSystemSettings(request, env);
+    }
+    if (path === "/api/cleanup/preview" && method === "POST") {
+      return previewCleanup(request, env);
+    }
+    if (path === "/api/cleanup/execute" && method === "POST") {
+      return executeCleanup(request, env);
+    }
+
+    // 13. Export & Import
+    if (path === "/api/export" && method === "GET") {
+      return exportData(env);
+    }
+    if (path === "/api/import" && method === "POST") {
+      return importData(request, env);
+    }
+
+    return json({ error: "接口不存在" }, 404);
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (!env.DB) return;
+    ctx.waitUntil(runProbe(env));
   }
-  if(path==="/chat"||path==="/")return new Response(chatPage(),{headers:{"content-type":"text/html;charset=utf-8"}});
-  if(path==="/moments")return new Response(momentsPage(),{headers:{"content-type":"text/html;charset=utf-8"}});
-  if(path==="/profile/settings")return new Response(settingsPage(),{headers:{"content-type":"text/html;charset=utf-8"}});
-  if(path==="/api/agents"&&method==="GET")return listAgents(env);
-  if(path==="/api/agents"&&method==="POST")return saveAgent(request,env);
-  const agentMatch = path.match(/^\/api\/agents\/(\d+)$/);
-  if(agentMatch&&method==="DELETE")return deleteAgent(Number(agentMatch[1]),env);
-  const memoryMatch = path.match(/^\/api\/agents\/(\d+)\/memories$/);
-  if(memoryMatch)return memoryRoutes(request,env,Number(memoryMatch[1]));
-  if(path==="/api/sendChat"&&method==="POST")return sendChat(request,env);
-  if(path==="/api/chat/history"&&method==="GET")return history(env,Number(url.searchParams.get("agentId")));
-  if(path==="/api/moments"&&method==="GET")return momentsGet(env);
-  if(path==="/api/moments"&&method==="POST")return createMoment(request,env,ctx);
-  if(path==="/api/moments/like"&&method==="POST")return likeMoment(request,env);
-  if(path==="/api/moments/comment"&&method==="POST")return commentMoment(request,env);
-  if(path==="/api/settings"&&method==="GET")return settingsGet(env);
-  if(path==="/api/settings"&&method==="POST")return settingsSave(request,env);
-  if(path==="/api/backends"&&method==="POST")return backendSave(request,env);
-  if(path==="/api/export"&&method==="GET")return exportData(env);
-  if(path==="/api/import"&&method==="POST")return importData(request,env);
-  return json({error:"Not found"},404);
- },
- async scheduled(_event:ScheduledEvent,env:Env,ctx:ExecutionContext){
-  if(!env.DB)return;
-  ctx.waitUntil(runProbe(env));
- }
 } satisfies ExportedHandler<Env>;
