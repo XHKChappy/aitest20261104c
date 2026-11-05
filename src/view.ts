@@ -84,7 +84,7 @@ export function initPage(hasPasswordSecret: boolean): string {
       btn.disabled = true;
       msg.textContent = '正在执行数据库迁移与种子注入，请稍候...';
       try {
-        const res = await apiFetch('/api/setup/init', {
+        const res = await fetch('/api/setup/init', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ password: pwdInput ? pwdInput.value : '' })
