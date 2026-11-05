@@ -13,7 +13,7 @@ import {
 } from "./modules";
 import { probeHttp, runProbe } from "./probe";
 import { exportData, importData } from "./export";
-import { renderWeChatApp, setupPage, initPage } from "./view";
+import { renderWeChatApp, renderLoginPage, setupPage, initPage } from "./view";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -69,9 +69,22 @@ export default {
     }
 
     // 5. Authentication routes
-    if (path === "/login" && method === "POST") {
-      return login(request, env);
+    if (path === "/login") {
+      if (method === "POST") {
+        return login(request, env);
+      }
+      const isAuthed = await requireAuth(request, env);
+      if (isAuthed) {
+        return new Response(null, {
+          status: 302,
+          headers: { "Location": "/" }
+        });
+      }
+      return new Response(renderLoginPage(), {
+        headers: { "content-type": "text/html; charset=utf-8" }
+      });
     }
+
     if (path === "/logout" && method === "POST") {
       return logout(env, request);
     }
@@ -82,8 +95,8 @@ export default {
       if (path.startsWith("/api/")) {
         return json({ error: "未登录或登录会话已过期" }, 401);
       }
-      // Render login page inside WeChat single-page container
-      return new Response(renderWeChatApp({ authed: false, user: null }), {
+      // If not authenticated, always return the native WeChat login page
+      return new Response(renderLoginPage(), {
         headers: { "content-type": "text/html; charset=utf-8" }
       });
     }

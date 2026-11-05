@@ -84,7 +84,7 @@ export function initPage(hasPasswordSecret: boolean): string {
       btn.disabled = true;
       msg.textContent = '正在执行数据库迁移与种子注入，请稍候...';
       try {
-        const res = await fetch('/api/setup/init', {
+        const res = await apiFetch('/api/setup/init', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ password: pwdInput ? pwdInput.value : '' })
@@ -100,6 +100,129 @@ export function initPage(hasPasswordSecret: boolean): string {
       } catch (e) {
         btn.disabled = false;
         msg.innerHTML = '<span style="color:#e5484d">✕ 网络异常: ' + e.message + '</span>';
+      }
+    }
+  </script>
+</body>
+</html>`;
+}
+
+export function renderLoginPage(): string {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>微信 · 宿主登录</title>
+  <style>
+    :root {
+      --wechat-green: #07c160;
+      --wechat-bg: #ededed;
+      --wechat-card: #ffffff;
+      --wechat-text: #191919;
+      --wechat-sub: #7f7f7f;
+      --wechat-border: #d9d9d9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --wechat-bg: #111111;
+        --wechat-card: #1e1e1e;
+        --wechat-text: #f0f0f0;
+        --wechat-sub: #8e8e93;
+        --wechat-border: #2c2c2e;
+      }
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; height: 100%; width: 100%;
+      background: var(--wechat-bg); color: var(--wechat-text);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-container {
+      width: 100%; max-width: 380px; padding: 40px 28px;
+      background: var(--wechat-card); border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.06); text-align: center;
+      margin: 16px; border: 1px solid var(--wechat-border);
+    }
+    .wechat-logo {
+      width: 68px; height: 68px; margin: 0 auto 16px;
+      background: var(--wechat-green); border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(7,193,96,0.3);
+    }
+    .wechat-logo svg { width: 44px; height: 44px; fill: white; }
+    .login-title { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+    .login-sub { font-size: 13px; color: var(--wechat-sub); margin: 0 0 28px; }
+    .input-wrap {
+      position: relative; margin-bottom: 20px;
+    }
+    .login-input {
+      width: 100%; height: 48px; border: 1px solid var(--wechat-border);
+      border-radius: 8px; padding: 0 16px; font-size: 15px;
+      background: var(--wechat-bg); color: var(--wechat-text); outline: none;
+      transition: border-color 0.2s;
+    }
+    .login-input:focus { border-color: var(--wechat-green); }
+    .login-btn {
+      width: 100%; height: 46px; background: var(--wechat-green);
+      color: white; border: none; border-radius: 8px; font-size: 16px;
+      font-weight: 500; cursor: pointer; transition: opacity 0.2s;
+    }
+    .login-btn:hover { opacity: 0.9; }
+    .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .err-msg {
+      color: #fa5151; font-size: 13px; margin-bottom: 14px; min-height: 18px;
+    }
+    .login-tip {
+      font-size: 12px; color: var(--wechat-sub); margin-top: 24px; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="wechat-logo">
+      <svg viewBox="0 0 24 24"><path d="M10 3C5.58 3 2 6.13 2 10c0 2.22 1.17 4.2 3 5.48V19l3.35-1.84c.53.1 1.08.16 1.65.16.28 0 .56-.02.83-.05-.53-.94-.83-2-.83-3.13 0-3.87 3.58-7 8-7 .28 0 .56.02.83.05C17.92 4.41 14.28 3 10 3zM18 9c-3.87 0-7 2.69-7 6s3.13 6 7 6c.52 0 1.02-.06 1.5-.16L22 22v-2.88c1.23-1.07 2-2.52 2-4.12 0-3.31-3.13-6-7-6z"/></svg>
+    </div>
+    <div class="login-title">微信</div>
+    <div class="login-sub">AI 智能体朋友圈 · 宿主身份登录</div>
+    <div class="input-wrap">
+      <input type="password" id="login-pwd" class="login-input" placeholder="请输入管理员登录密码" autofocus onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="login-err" class="err-msg"></div>
+    <button id="login-btn" class="login-btn" onclick="doLogin()">登 录</button>
+    <div class="login-tip">密码由 Cloudflare Worker 的 <code>ADMIN_PASSWORD</code> Secret 提供</div>
+  </div>
+  <script>
+    async function doLogin() {
+      const pwd = document.getElementById('login-pwd').value.trim();
+      const errBox = document.getElementById('login-err');
+      const btn = document.getElementById('login-btn');
+      errBox.textContent = '';
+      if (!pwd) {
+        errBox.textContent = '请输入管理员密码';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = '正在登录...';
+      try {
+        const res = await fetch('/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password: pwd })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          window.location.href = '/';
+        } else {
+          errBox.textContent = data.error || '登录失败，请检查密码';
+          btn.disabled = false;
+          btn.textContent = '登 录';
+        }
+      } catch (e) {
+        errBox.textContent = '网络连接异常，请重试';
+        btn.disabled = false;
+        btn.textContent = '登 录';
       }
     }
   </script>
@@ -475,17 +598,55 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     }
     .wc-row textarea { text-align: left; min-height: 70px; resize: vertical; }
 
-    /* Wide Screen (iPad / Desktop Responsive) */
-    @media (min-width: 800px) {
-      .pc-sidebar { display: flex; }
-      .main-column { max-width: 340px; border-right: 0.5px solid var(--wechat-border); }
-      .wc-tabbar { display: none; }
+    /* Mobile Layout Default (<800px): Fixed Bottom 4-Tab Bar & Sliding Sub-Pages */
+    @media (max-width: 799px) {
+      .pc-sidebar { display: none !important; }
+      .main-column {
+        width: 100% !important; flex: 1 !important;
+        padding-bottom: calc(52px + env(safe-area-inset-bottom)) !important;
+      }
+      .wc-tabbar {
+        display: flex !important;
+        position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
+        height: calc(52px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: env(safe-area-inset-bottom) !important;
+        background: var(--wechat-header) !important;
+        border-top: 0.5px solid var(--wechat-border) !important;
+        z-index: 40 !important;
+      }
+      #empty-chat-view { display: none !important; }
       .chat-view, .moments-view, .wc-panel-view {
-        position: relative; flex: 1; transform: none !important; z-index: 1;
+        position: fixed !important; inset: 0 !important; z-index: 50 !important;
+        background: var(--wechat-bg) !important; display: flex !important; flex-direction: column !important;
+        transform: translateX(100%) !important; transition: transform 0.25s ease-out !important;
       }
+      .chat-view.open, .moments-view.open, .wc-panel-view.open {
+        transform: translateX(0) !important;
+      }
+    }
+
+    /* Desktop Wide Screen (>=800px): Authentic WeChat PC Layout */
+    @media (min-width: 800px) {
+      .pc-sidebar { display: flex !important; width: 56px !important; min-width: 56px !important; max-width: 56px !important; }
+      .main-column {
+        width: 280px !important; min-width: 280px !important; max-width: 280px !important;
+        border-right: 0.5px solid var(--wechat-border) !important; flex-shrink: 0 !important;
+      }
+      .wc-tabbar { display: none !important; }
       #split-view-container {
-        display: flex; flex: 1; height: 100%; position: relative; overflow: hidden;
+        display: flex !important; flex: 1 !important; height: 100% !important; position: relative !important;
+        background: var(--wechat-chat-bg) !important; overflow: hidden !important;
       }
+      /* On Desktop, only the active-pane is visible, all other panes are display: none */
+      .chat-view, .moments-view, .wc-panel-view, #empty-chat-view {
+        position: absolute !important; inset: 0 !important; display: none !important;
+        flex-direction: column !important; width: 100% !important; height: 100% !important;
+        transform: none !important; z-index: 1 !important;
+      }
+      .chat-view.active-pane, .moments-view.active-pane, .wc-panel-view.active-pane, #empty-chat-view.active-pane {
+        display: flex !important;
+      }
+      .desktop-hide-back { display: none !important; }
     }
   </style>
 </head>
@@ -616,10 +777,16 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     <!-- Secondary Right Split Container (For Chat Window / Moments / Detail) -->
     <div id="split-view-container" style="flex:2;position:relative">
+      <!-- 0. Empty State Placeholder (Desktop) -->
+      <div id="empty-chat-view" class="active-pane" style="align-items:center;justify-content:center;background:var(--wechat-chat-bg);color:var(--wechat-light-sub);height:100%">
+        <svg style="width:72px;height:72px;fill:currentColor;opacity:0.25;margin-bottom:12px" viewBox="0 0 24 24"><path d="M10 3C5.58 3 2 6.13 2 10c0 2.22 1.17 4.2 3 5.48V19l3.35-1.84c.53.1 1.08.16 1.65.16.28 0 .56-.02.83-.05-.53-.94-.83-2-.83-3.13 0-3.87 3.58-7 8-7 .28 0 .56.02.83.05C17.92 4.41 14.28 3 10 3zM18 9c-3.87 0-7 2.69-7 6s3.13 6 7 6c.52 0 1.02-.06 1.5-.16L22 22v-2.88c1.23-1.07 2-2.52 2-4.12 0-3.31-3.13-6-7-6z"/></svg>
+        <div style="font-size:14px;letter-spacing:1px;color:var(--wechat-sub)">未选择聊天</div>
+      </div>
+
       <!-- 1. WeChat Chat Window -->
       <div id="chat-view" class="chat-view">
         <header class="wc-header">
-          <div class="wc-header-action" onclick="closeChat()">
+          <div class="wc-header-action desktop-hide-back" onclick="closeChat()">
             <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
             <span id="chat-header-back-count" style="font-size:14px">微信</span>
           </div>
@@ -644,7 +811,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
       <!-- 2. Moments (朋友圈) Window -->
       <div id="moments-view" class="moments-view">
         <header class="wc-header" style="background:transparent;position:sticky;top:0;z-index:20">
-          <div class="wc-header-action" style="color:white;text-shadow:0 1px 3px rgba(0,0,0,0.8)" onclick="closeMoments()">
+          <div class="wc-header-action desktop-hide-back" style="color:white;text-shadow:0 1px 3px rgba(0,0,0,0.8)" onclick="closeMoments()">
             <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
           </div>
           <div class="wc-header-title" style="color:white;text-shadow:0 1px 3px rgba(0,0,0,0.8)">朋友圈</div>
@@ -666,7 +833,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
       <!-- 3. Agent Profile & Independent Settings Panel -->
       <div id="agent-profile-view" class="wc-panel-view">
         <header class="wc-header">
-          <div class="wc-header-action" onclick="closeAgentProfile()">
+          <div class="wc-header-action desktop-hide-back" onclick="closeAgentProfile()">
             <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
           </div>
           <div class="wc-header-title">智能体资料</div>
@@ -678,7 +845,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
       <!-- 4. System Settings Panel -->
       <div id="settings-view" class="wc-panel-view">
         <header class="wc-header">
-          <div class="wc-header-action" onclick="closeSystemSettings()">
+          <div class="wc-header-action desktop-hide-back" onclick="closeSystemSettings()">
             <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
           </div>
           <div class="wc-header-title">系统管理与设置</div>
@@ -715,6 +882,33 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
   <!-- Embedded Client Logic -->
   <script>
     // State management
+        // Global apiFetch with automatic 401 redirect to /login
+    async function apiFetch(url, opts = {}) {
+      const res = await fetch(url, opts);
+      if (res.status === 401) {
+        window.location.href = '/login';
+        throw new Error('未登录或登录会话已过期');
+      }
+      return res;
+    }
+
+    // Switch active pane on desktop (only 1 visible at a time) and mobile
+    function setDesktopPane(paneId) {
+      const isDesktop = window.innerWidth >= 800;
+      const panes = ['empty-chat-view', 'chat-view', 'moments-view', 'agent-profile-view', 'settings-view'];
+      panes.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (id === paneId) {
+          el.classList.add('active-pane');
+          if (!isDesktop) el.classList.add('open');
+        } else {
+          el.classList.remove('active-pane');
+          if (!isDesktop && id !== paneId) el.classList.remove('open');
+        }
+      });
+    }
+
     let state = {
       currentTab: 'chat',
       activeAgentId: null,
@@ -823,8 +1017,23 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
       const titles = { chat: '微信', contacts: '通讯录', discover: '发现', me: '我' };
       document.getElementById('main-header-title').textContent = titles[tab] || '微信';
 
-      if (tab === 'chat') loadConversations();
-      if (tab === 'contacts') loadContacts();
+      if (tab === 'chat') {
+        loadConversations();
+        if (window.innerWidth >= 800) {
+          if (state.activeAgentId) setDesktopPane('chat-view');
+          else setDesktopPane('empty-chat-view');
+        }
+      }
+      if (tab === 'contacts') {
+        loadContacts();
+        if (window.innerWidth >= 800) setDesktopPane('empty-chat-view');
+      }
+      if (tab === 'discover') {
+        if (window.innerWidth >= 800) openMoments();
+      }
+      if (tab === 'me') {
+        if (window.innerWidth >= 800) openSystemSettings();
+      }
     }
 
     function handleHeaderAction() {
@@ -840,7 +1049,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     // Tab 1: Conversations
     async function loadConversations() {
       try {
-        const res = await fetch('/api/chat/conversations');
+        const res = await apiFetch('/api/chat/conversations');
         const list = await res.json();
         state.conversations = list;
         let totalUnread = 0;
@@ -886,7 +1095,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     // Tab 2: Contacts
     async function loadContacts() {
       try {
-        const res = await fetch('/api/agents');
+        const res = await apiFetch('/api/agents');
         const list = await res.json();
         state.contacts = list;
 
@@ -913,7 +1122,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     async function openChat(agentId, agentName) {
       state.activeAgentId = agentId;
       document.getElementById('chat-header-title').textContent = agentName;
-      document.getElementById('chat-view').classList.add('open');
+      setDesktopPane('chat-view');
       await loadChatHistory(agentId);
       markConversationRead(agentId);
     }
@@ -921,11 +1130,12 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     function closeChat() {
       state.activeAgentId = null;
       document.getElementById('chat-view').classList.remove('open');
+      if (window.innerWidth >= 800) setDesktopPane('empty-chat-view');
       loadConversations();
     }
 
     async function markConversationRead(agentId) {
-      await fetch('/api/chat/read', {
+      await apiFetch('/api/chat/read', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ agentId })
@@ -935,7 +1145,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     async function loadChatHistory(agentId) {
       const msgBox = document.getElementById('chat-messages');
       try {
-        const res = await fetch('/api/chat/history?agentId=' + agentId);
+        const res = await apiFetch('/api/chat/history?agentId=' + agentId);
         const data = await res.json();
         const messages = data.messages || [];
 
@@ -1009,7 +1219,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
       showTypingIndicator(true);
 
       try {
-        const res = await fetch('/api/sendChat', {
+        const res = await apiFetch('/api/sendChat', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -1071,7 +1281,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
             content: '确定删除这条消息记录？',
             danger: true,
             onConfirm: async () => {
-              await fetch('/api/chat/deleteMessage', {
+              await apiFetch('/api/chat/deleteMessage', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ messageId: msgId })
@@ -1092,7 +1302,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
           const val = document.getElementById('edit-msg-input')?.value.trim();
           if (!val) return;
           showTypingIndicator(true);
-          await fetch('/api/chat/edit', {
+          await apiFetch('/api/chat/edit', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ messageId: msgId, content: val })
@@ -1105,7 +1315,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     async function regenerateAssistantReply() {
       showTypingIndicator(true);
-      await fetch('/api/chat/regenerate', {
+      await apiFetch('/api/chat/regenerate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ agentId: state.activeAgentId })
@@ -1116,12 +1326,13 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     // Moments (朋友圈)
     async function openMoments() {
-      document.getElementById('moments-view').classList.add('open');
+      setDesktopPane('moments-view');
       loadMomentsFeed();
     }
 
     function closeMoments() {
       document.getElementById('moments-view').classList.remove('open');
+      if (window.innerWidth >= 800) { if (state.activeAgentId) setDesktopPane('chat-view'); else setDesktopPane('empty-chat-view'); }
     }
 
     async function loadMomentsFeed() {
@@ -1129,7 +1340,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
       feedEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--wechat-sub)">加载动态中...</div>';
 
       try {
-        const res = await fetch('/api/moments');
+        const res = await apiFetch('/api/moments');
         const data = await res.json();
         const moments = data.moments || [];
 
@@ -1224,7 +1435,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     });
 
     async function toggleLike(momentId) {
-      await fetch('/api/moments/like', {
+      await apiFetch('/api/moments/like', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ momentId })
@@ -1252,7 +1463,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
         onConfirm: async () => {
           const content = document.getElementById('comment-input-text')?.value.trim();
           if (!content) return;
-          await fetch('/api/moments/comment', {
+          await apiFetch('/api/moments/comment', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -1284,7 +1495,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
           const content = document.getElementById('publish-moment-text')?.value.trim();
           const visibility = document.getElementById('publish-moment-visibility')?.value;
           if (!content) return;
-          await fetch('/api/moments', {
+          await apiFetch('/api/moments', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ content, visibility })
@@ -1301,7 +1512,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
         content: '确定要删除这条朋友圈动态吗？',
         danger: true,
         onConfirm: async () => {
-          await fetch('/api/moments/' + id, { method: 'DELETE' });
+          await apiFetch('/api/moments/' + id, { method: 'DELETE' });
           showToast('已删除');
           loadMomentsFeed();
         }
@@ -1316,12 +1527,12 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     async function openAgentProfileById(id) {
       const view = document.getElementById('agent-profile-view');
-      view.classList.add('open');
+      setDesktopPane('agent-profile-view');
       const box = document.getElementById('agent-profile-content');
       box.innerHTML = '<div style="text-align:center;padding:40px;color:var(--wechat-sub)">加载资料中...</div>';
 
       try {
-        const res = await fetch('/api/agents/' + id);
+        const res = await apiFetch('/api/agents/' + id);
         const data = await res.json();
         state.activeAgentData = data;
         const a = data.agent;
@@ -1369,6 +1580,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     function closeAgentProfile() {
       document.getElementById('agent-profile-view').classList.remove('open');
+      if (window.innerWidth >= 800) { if (state.activeAgentId) setDesktopPane('chat-view'); else setDesktopPane('empty-chat-view'); }
     }
 
     function startChatFromProfile(agentId, agentName) {
@@ -1383,7 +1595,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
         danger: true,
         onConfirm: async () => {
           const delData = document.getElementById('del-data-check')?.checked;
-          await fetch('/api/agents/' + id + '?delete_data=' + (delData ? 'true' : 'false'), { method: 'DELETE' });
+          await apiFetch('/api/agents/' + id + '?delete_data=' + (delData ? 'true' : 'false'), { method: 'DELETE' });
           showToast('已删除');
           closeAgentProfile();
           if (state.activeAgentId === id) closeChat();
@@ -1395,7 +1607,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     // Memories Manager
     async function openAgentMemoriesModal(agentId) {
-      const res = await fetch('/api/agents/' + agentId + '/memories');
+      const res = await apiFetch('/api/agents/' + agentId + '/memories');
       const memories = await res.json();
 
       const itemsHtml = memories.map(m => \`
@@ -1420,7 +1632,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     }
 
     async function deleteMemoryItem(agentId, memoryId) {
-      await fetch('/api/agents/' + agentId + '/memories', {
+      await apiFetch('/api/agents/' + agentId + '/memories', {
         method: 'DELETE',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ memoryId })
@@ -1446,7 +1658,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
           const content = document.getElementById('mem-content')?.value.trim();
           const memory_type = document.getElementById('mem-type')?.value;
           if (!content) return;
-          await fetch('/api/agents/' + agentId + '/memories', {
+          await apiFetch('/api/agents/' + agentId + '/memories', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ content, memory_type, importance: 4 })
@@ -1504,7 +1716,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
             showToast('名称不能为空');
             return;
           }
-          await fetch('/api/agents', {
+          await apiFetch('/api/agents', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1539,7 +1751,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
             avatar_url: document.getElementById('host-avatar')?.value.trim(),
             moments_background_url: document.getElementById('host-moments-bg')?.value.trim()
           };
-          await fetch('/api/settings', {
+          await apiFetch('/api/settings', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ user: userPayload })
@@ -1565,9 +1777,9 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
       try {
         const [settRes, backendsRes, statsRes] = await Promise.all([
-          fetch('/api/settings'),
-          fetch('/api/backends'),
-          fetch('/api/stats/token')
+          apiFetch('/api/settings'),
+          apiFetch('/api/backends'),
+          apiFetch('/api/stats/token')
         ]);
         const sData = await settRes.json();
         const bList = await backendsRes.json();
@@ -1682,6 +1894,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     function closeSystemSettings() {
       document.getElementById('settings-view').classList.remove('open');
+      if (window.innerWidth >= 800) { if (state.activeAgentId) setDesktopPane('chat-view'); else setDesktopPane('empty-chat-view'); }
     }
 
     async function saveAllSettings() {
@@ -1694,7 +1907,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
           probe_enabled: document.getElementById('sett-probe-enabled')?.checked ? 1 : 0
         }
       };
-      await fetch('/api/settings', {
+      await apiFetch('/api/settings', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1734,7 +1947,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
             showToast('必填字段不能为空');
             return;
           }
-          await fetch('/api/backends', {
+          await apiFetch('/api/backends', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1747,7 +1960,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
 
     async function testBackendApi(id) {
       showToast('正在发起连通性测试...');
-      const res = await fetch('/api/backends/test', {
+      const res = await apiFetch('/api/backends/test', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id })
@@ -1775,7 +1988,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
         content: '确定要删除此 API 后端配置吗？',
         danger: true,
         onConfirm: async () => {
-          await fetch('/api/backends/' + id, { method: 'DELETE' });
+          await apiFetch('/api/backends/' + id, { method: 'DELETE' });
           showToast('已删除');
           openSystemSettings();
         }
@@ -1783,7 +1996,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
     }
 
     async function viewDetailedLogs() {
-      const res = await fetch('/api/backends/details');
+      const res = await apiFetch('/api/backends/details');
       const rows = await res.json();
       const listHtml = rows.map(r => \`
         <div style="padding:8px;border-bottom:0.5px solid var(--wechat-border);font-size:12px">
@@ -1805,7 +2018,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
         title: '清空详细日志',
         content: '确定清空所有后端的最近20条详细日志？历史汇总统计将完整保留。',
         onConfirm: async () => {
-          await fetch('/api/backends/clearLogs', { method: 'POST' });
+          await apiFetch('/api/backends/clearLogs', { method: 'POST' });
           showToast('详细日志已清空');
         }
       });
@@ -1815,7 +2028,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
       const mod = document.getElementById('cleanup-module')?.value;
       const time = document.getElementById('cleanup-time')?.value;
       // 1. Preview
-      const prevRes = await fetch('/api/cleanup/preview', {
+      const prevRes = await apiFetch('/api/cleanup/preview', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ module: mod, timeFilter: time })
@@ -1832,7 +2045,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
         danger: true,
         confirmText: '确认清理',
         onConfirm: async () => {
-          const execRes = await fetch('/api/cleanup/execute', {
+          const execRes = await apiFetch('/api/cleanup/execute', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ module: mod, timeFilter: time })
@@ -1857,7 +2070,7 @@ export function renderWeChatApp(ctx: { authed: boolean; user: any }): string {
         confirmText: '确认覆盖导入',
         onConfirm: async () => {
           const text = await file.text();
-          const res = await fetch('/api/import', {
+          const res = await apiFetch('/api/import', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: text
